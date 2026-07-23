@@ -12,85 +12,135 @@
 
 ---
 
-## 📌 About The Project
+# 📌 About The Project
 
-The **Advanced Cloud POS & Inventory SaaS System** is a robust, enterprise-grade Multi-Tenant Point of Sale and Inventory Management web application built for modern retail businesses, chains, and wholesale distributors. 
+The **Advanced Cloud POS & Inventory SaaS System** is a robust, enterprise-grade Multi-Tenant Point of Sale (POS) and Inventory Management web application built for modern retail businesses, chain stores, supermarkets, and wholesale distributors.
 
-It features a high-performance backend powered by **Laravel 12** and a dynamic, single-page application (SPA) frontend powered by **React.js & Inertia.js**, styled meticulously using professional Bootstrap/Tailwind admin templates.
-
----
-
-## ✨ Key Features & Modules
-
-### 👑 1. Super Admin Panel
-* **SaaS Company Management:** Register, approve, suspend, or manage tenant companies and their subscription plans.
-* **Global Analytics:** System-wide revenue, active subscriptions, and platform usage statistics.
-* **Global Settings:** System configurations, business types, and package management.
-
-### 🏢 2. Company Admin Panel
-* **Branch Management:** Create and manage multiple retail/warehouse branches under a single company.
-* **Staff & Role Management:** Assign roles (Company Admin, Branch Manager, Salesman) with strict permission controls.
-* **Centralized Inventory & Products:** Manage global product catalogs, categories, brands, variants, and bulk stock transfers.
-* **Financial & Sales Reports:** Comprehensive profit/loss, daily sales, and stock audit reports.
-
-### 📦 3. Branch & POS Terminal
-* **Lightning-Fast POS Interface:** Optimized barcode scanning, cart management, instant discounts, and tax calculations.
-* **Checkout & Multi-Payment:** Support for cash, card, mobile banking, and due/credit sales.
-* **Professional Invoicing:** Instant thermal receipt and standard invoice printing.
-* **Stock & Shift Management:** Daily opening/closing cash drawer balances and branch-level inventory tracking.
+It features a high-performance backend powered by **Laravel 12** and a modern single-page application (SPA) frontend powered by **React.js** and **Inertia.js**, styled with **Tailwind CSS** and professional admin templates.
 
 ---
 
-## 🛠️ Tech Stack
+# ✨ Key Features & Modules
 
-* **Backend:** PHP 8.2+, Laravel 12 Framework, Eloquent ORM
-* **Frontend:** React.js 19, Inertia.js v3, Vite
-* **UI/UX:** Bootstrap Admin Templates, Tailwind CSS, Lucide / Tabler Icons
-* **Database:** MySQL / PostgreSQL
-* **Authentication & Security:** Laravel Fortify/Breeze, Role-Based Access Control (RBAC), Tenant Isolation Middleware
+## 👑 1. Super Admin Panel
+
+- SaaS Company Management
+- Subscription & Package Management
+- Tenant Approval & Suspension
+- Global Revenue Analytics
+- Platform Usage Statistics
+- System Settings
+
+## 🏢 2. Company Admin Panel
+
+- Multi Branch Management
+- Staff & Role Management (RBAC)
+- Product Catalog Management
+- Categories & Brands
+- Product Variants
+- Inventory Transfers
+- Sales Reports
+- Profit/Loss Reports
+- Stock Audit Reports
+
+## 📦 3. Branch & POS Terminal
+
+- Lightning-Fast POS Interface
+- Barcode Scanner Support
+- Cart Management
+- Discount & Tax Calculation
+- Multi-Payment Support
+- Due/Credit Sales
+- Thermal Receipt Printing
+- Invoice Printing
+- Opening & Closing Shift
+- Branch Inventory Tracking
 
 ---
 
-## ⚙️ Getting Started (Installation Guide)
+# 🛠️ Tech Stack
 
-To get a local copy up and running, follow these simple steps:
+| Layer | Technology |
+|--------|------------|
+| Backend | PHP 8.2+, Laravel 12 |
+| Frontend | React 19, Inertia.js v3, Vite |
+| UI | Tailwind CSS, Bootstrap Admin Templates |
+| Database | MySQL / PostgreSQL |
+| Authentication | Laravel Breeze / Fortify |
+| Authorization | RBAC |
+| Multi-Tenancy | Tenant Isolation Middleware |
 
-### 1. Clone the Repository
+---
+
+# ⚙️ Installation
+
+## 1. Clone Repository
+
 ```bash
-git clone [https://github.com/your-username/cloud-pos-inventory.git](https://github.com/your-username/cloud-pos-inventory.git)
+git clone https://github.com/your-username/cloud-pos-inventory.git
 cd cloud-pos-inventory
+```
 
+## 2. Install PHP Dependencies
 
-2. Install PHP Dependencies
-Bash
+```bash
 composer install
-3. Install JavaScript Dependencies
-Bash
-npm install
-4. Environment Setup
-Copy the example environment file and configure your database credentials:
+```
 
-Bash
+## 3. Install JavaScript Dependencies
+
+```bash
+npm install
+```
+
+## 4. Configure Environment
+
+```bash
 cp .env.example .env
 php artisan key:generate
-5. Run Database Migrations & Seeders
-Bash
+```
+
+Update your `.env` file with your database credentials.
+
+## 5. Run Database Migration
+
+```bash
 php artisan migrate --seed
-6. Build Frontend Assets & Run Development Servers
-Open two separate terminal tabs:
+```
 
-Tab 1 (Larael Server):
+## 6. Start Development Server
 
-Bash
+### Terminal 1
+
+```bash
 php artisan serve
-Tab 2 (Vite Dev Server):
+```
 
-Bash
+### Terminal 2
+
+```bash
 npm run dev
-Now, open your browser and visit: http://127.0.0.1:8000
+```
 
-🔒 Security & Multi-Tenancy Architecture
-This system implements strict middleware-based data isolation (EnsureTenantAccess and CheckSubscriptionActive) ensuring that users can only access data belonging to their authorized company and branch.
+Open:
 
-📄 License
-This project is open-sourced software licensed under the MIT license.
+```
+http://127.0.0.1:8000
+```
+
+---
+
+# 🔒 Security & Multi-Tenancy
+
+The application implements strict tenant isolation using middleware including:
+
+- EnsureTenantAccess
+- CheckSubscriptionActive
+
+Each company's data is completely isolated, ensuring users can only access authorized company and branch resources.
+
+---
+
+# 📄 License
+
+This project is licensed under the **MIT License**.

@@ -17,18 +17,24 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        
-        // Spatie Middleware Aliases
+
+        // Spatie Permission Middleware Aliases
         $middleware->alias([
-            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'role'               => \Spatie\Permission\Middleware\RoleMiddleware::class,
+            'permission'         => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+
+            // SaaS Custom Middleware Aliases
+            // 'tenant' enforces multi-tenant isolation (company_id + branch_id checks).
+            // 'subscription' ensures the company's subscription is active before access.
+            'tenant'             => \App\Http\Middleware\EnsureTenantAccess::class,
+            'subscription'       => \App\Http\Middleware\CheckSubscriptionActive::class,
         ]);
 
         // Guest Redirect Logic (SaaS Roles)
         // লগইন করা ইউজার যদি /login পেজে আসে, তাকে তার রোল অনুযায়ী ড্যাশবোর্ডে পাঠানো হবে
         $middleware->redirectUsersTo(function (Request $request) {
-            
+
             $user = $request->user();
 
             if ($user) {
@@ -41,9 +47,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 }
             }
 
-            return route('dashboard'); // Fallback
+            // Fallback: redirect to home if no role is assigned yet.
+            // Avoids RouteNotFoundException since no 'dashboard' named route exists.
+            return '/';
         });
-        
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

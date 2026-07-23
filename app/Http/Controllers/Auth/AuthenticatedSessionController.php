@@ -6,17 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\View\View;
+use Illuminate\Support\Facades\Route;
 
 class AuthenticatedSessionController extends Controller
 {
     /**
      * Display the login view.
      */
-    public function create(): View
+    public function create()
     {
-        return view('auth.login');
+        // আগের return view('auth.login'); মুছে নিচের কোডটুকু দিন:
+        return Inertia::render('Auth/Login', [
+            'canResetPassword' => Route::has('password.request'),
+            'status' => session('status'),
+        ]);
     }
 
     /**
@@ -40,8 +45,9 @@ class AuthenticatedSessionController extends Controller
             }
         }
 
-        // Fallback for normal users without specific roles
-        return redirect()->intended(route('dashboard', absolute: false));
+        // Fallback: redirect to home page if the user has no recognized role assigned.
+        // Avoids RouteNotFoundException — no named 'dashboard' route exists in this project.
+        return redirect()->intended('/');
     }
 
     /**

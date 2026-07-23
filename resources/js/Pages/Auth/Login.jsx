@@ -1,121 +1,221 @@
-import React from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
-import AuthLayout from '../../Layouts/AuthLayout';
-import { Mail, Lock, LogIn, CheckSquare, Square } from 'lucide-react';
+import React from "react";
+import { Head, Link, useForm } from "@inertiajs/react";
 
+/**
+ * Login Page — 100% matches templates/auth-login.html
+ *
+ * Template structure:
+ *   <div class="auth-bg d-flex min-vh-100 justify-content-center align-items-start">
+ *     <div class="row g-0 justify-content-center w-100 m-xxl-5 px-xxl-4 m-3">
+ *       <div class="col-xl-4 col-lg-5 col-md-6">
+ *         <div class="card overflow-hidden text-center p-xxl-4 p-3 mb-0">
+ *           <a href="index.html" class="auth-brand mb-4">
+ *             <img src="assets/images/logo-dark.png" ...>
+ *             <img src="assets/images/logo.png" ...>
+ *           </a>
+ *           ...form...
+ *         </div>
+ *         <div class="text-center mt-3">...</div>
+ *       </div>
+ *     </div>
+ *   </div>
+ *
+ * Asset paths: /frontend_assets/images/* (served from public/frontend_assets/)
+ */
 export default function Login({ status, canResetPassword = true }) {
-  const { data, setData, post, processing, errors, reset } = useForm({
-    email: '',
-    password: '',
-    remember: false,
-  });
-
-  const submit = (e) => {
-    e.preventDefault();
-    post('/login', {
-      onFinish: () => reset('password'),
+    const { data, setData, post, processing, errors, reset } = useForm({
+        email: "",
+        password: "",
+        remember: false,
     });
-  };
 
-  return (
-    <AuthLayout title="Sign In to Your Account" subtitle="Enter your credentials to access the POS terminal">
-      <Head title="Sign In" />
+    const submit = (e) => {
+        e.preventDefault();
+        post("/login", {
+            onFinish: () => reset("password"),
+        });
+    };
 
-      {status && (
-        <div className="mb-4 text-xs font-semibold text-emerald-400 bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20">
-          {status}
-        </div>
-      )}
+    return (
+        <>
+            <Head title="Log In" />
 
-      <form onSubmit={submit} className="space-y-4">
-        {/* Email Field */}
-        <div>
-          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-            Email Address
-          </label>
-          <div className="relative">
-            <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              id="email"
-              type="email"
-              value={data.email}
-              onChange={(e) => setData('email', e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-              placeholder="user@example.com"
-              autoComplete="username"
-              required
-            />
-          </div>
-          {errors.email && <p className="mt-1.5 text-xs text-rose-400 font-medium">{errors.email}</p>}
-        </div>
+            <div className="auth-bg d-flex min-vh-100 justify-content-center align-items-start">
+                <div className="row g-0 justify-content-center w-100 m-xxl-5 px-xxl-4 m-3">
+                    <div className="col-xl-4 col-lg-5 col-md-6">
+                        <div className="card overflow-hidden text-center p-xxl-4 p-3 mb-0">
+                            {/* Brand Logo — exact match to template */}
+                            <a href="/" className="auth-brand mb-4">
+                                <img
+                                    src="/frontend_assets/images/logo-dark.png"
+                                    alt="dark logo"
+                                    height="26"
+                                    className="logo-dark"
+                                />
+                                <img
+                                    src="/frontend_assets/images/logo.png"
+                                    alt="logo light"
+                                    height="26"
+                                    className="logo-light"
+                                />
+                            </a>
 
-        {/* Password Field */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Password
-            </label>
-            {canResetPassword && (
-              <Link
-                href="/forgot-password"
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-              >
-                Forgot password?
-              </Link>
-            )}
-          </div>
-          <div className="relative">
-            <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              id="password"
-              type="password"
-              value={data.password}
-              onChange={(e) => setData('password', e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
-          </div>
-          {errors.password && <p className="mt-1.5 text-xs text-rose-400 font-medium">{errors.password}</p>}
-        </div>
+                            <h4 className="fw-semibold mb-2 fs-18">
+                                Log In to your account
+                            </h4>
 
-        {/* Remember Me */}
-        <div className="flex items-center justify-between pt-1">
-          <label className="flex items-center cursor-pointer space-x-2 text-xs text-slate-300 select-none">
-            <input
-              type="checkbox"
-              checked={data.remember}
-              onChange={(e) => setData('remember', e.target.checked)}
-              className="sr-only"
-            />
-            {data.remember ? (
-              <CheckSquare className="w-4 h-4 text-indigo-500" />
-            ) : (
-              <Square className="w-4 h-4 text-slate-600" />
-            )}
-            <span>Remember me on this device</span>
-          </label>
-        </div>
+                            <p className="text-muted mb-4">
+                                Enter your email address and password to access
+                                admin panel.
+                            </p>
 
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={processing}
-          className="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-indigo-600/25 flex items-center justify-center space-x-2 text-sm transition-all disabled:opacity-50"
-        >
-          <LogIn className="w-4 h-4" />
-          <span>{processing ? 'Signing in...' : 'Sign In'}</span>
-        </button>
+                            {/* Status message (e.g. password reset success) */}
+                            {status && (
+                                <div
+                                    className="alert alert-success text-start mb-3"
+                                    role="alert"
+                                >
+                                    {status}
+                                </div>
+                            )}
 
-        {/* Register link */}
-        <p className="text-center text-xs text-slate-400 pt-3">
-          Don't have an account?{' '}
-          <Link href="/register" className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors">
-            Register here
-          </Link>
-        </p>
-      </form>
-    </AuthLayout>
-  );
+                            {/* Login Form — exact match to template */}
+                            <form onSubmit={submit} className="text-start">
+                                <div className="mb-3">
+                                    <label
+                                        className="form-label"
+                                        htmlFor="example-email"
+                                    >
+                                        Email
+                                    </label>
+                                    <input
+                                        type="email"
+                                        id="example-email"
+                                        name="email"
+                                        className={`form-control${errors.email ? " is-invalid" : ""}`}
+                                        placeholder="Enter your email"
+                                        value={data.email}
+                                        onChange={(e) =>
+                                            setData("email", e.target.value)
+                                        }
+                                        autoComplete="username"
+                                        required
+                                    />
+                                    {errors.email && (
+                                        <div className="invalid-feedback">
+                                            {errors.email}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mb-3">
+                                    <label
+                                        className="form-label"
+                                        htmlFor="example-password"
+                                    >
+                                        Password
+                                    </label>
+                                    <input
+                                        type="password"
+                                        id="example-password"
+                                        className={`form-control${errors.password ? " is-invalid" : ""}`}
+                                        placeholder="Enter your password"
+                                        value={data.password}
+                                        onChange={(e) =>
+                                            setData("password", e.target.value)
+                                        }
+                                        autoComplete="current-password"
+                                        required
+                                    />
+                                    {errors.password && (
+                                        <div className="invalid-feedback">
+                                            {errors.password}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="d-flex justify-content-between mb-3">
+                                    <div className="form-check">
+                                        <input
+                                            type="checkbox"
+                                            className="form-check-input"
+                                            id="checkbox-signin"
+                                            checked={data.remember}
+                                            onChange={(e) =>
+                                                setData(
+                                                    "remember",
+                                                    e.target.checked,
+                                                )
+                                            }
+                                        />
+                                        <label
+                                            className="form-check-label"
+                                            htmlFor="checkbox-signin"
+                                        >
+                                            Remember me
+                                        </label>
+                                    </div>
+
+                                    {canResetPassword && (
+                                        <Link
+                                            href="/forgot-password"
+                                            className="text-muted border-bottom border-dashed"
+                                        >
+                                            Forget Password
+                                        </Link>
+                                    )}
+                                </div>
+
+                                <div className="d-grid">
+                                    <button
+                                        className="btn btn-primary fw-semibold"
+                                        type="submit"
+                                        disabled={processing}
+                                    >
+                                        {processing ? (
+                                            <>
+                                                <span
+                                                    className="spinner-border spinner-border-sm me-1"
+                                                    role="status"
+                                                    aria-hidden="true"
+                                                ></span>
+                                                Signing in...
+                                            </>
+                                        ) : (
+                                            "Log In"
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        {/* Below-card links — exact match to template */}
+                        <div className="text-center mt-3">
+                            <p className="fs-14 mb-4">
+                                Don&apos;t have an account?{" "}
+                                <Link
+                                    href="/register"
+                                    className="fw-semibold text-danger ms-1"
+                                >
+                                    Sign Up !
+                                </Link>
+                            </p>
+
+                            <p className="mt-auto mb-0">
+                                {new Date().getFullYear()} &copy; Zircos - By{" "}
+                                <a
+                                    href="https://coderthemes.com/"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="fw-bold text-decoration-underline text-uppercase text-reset fs-12"
+                                >
+                                    Coderthemes
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
 }

@@ -14,22 +14,25 @@ use App\Models\Stock;
 use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class ProductController extends Controller
 {
     /**
-     * Display a listing of the products.
+     * Display a listing of the products for the authenticated company.
      */
     public function index()
     {
         $companyId = Auth::user()->company_id;
 
         $products = Product::where('company_id', $companyId)
-            ->with(['category', 'brand', 'variants.stock'])
+            ->with(['category', 'brand', 'variants'])
             ->latest()
             ->paginate(15);
 
-        return view('company.products.index', compact('products'));
+        return Inertia::render('Company/Products/Index', [
+            'products' => $products,
+        ]);
     }
 
     /**
@@ -39,46 +42,55 @@ class ProductController extends Controller
     {
         $companyId = Auth::user()->company_id;
 
-        $categories = Category::where('company_id', $companyId)->get(); 
-        $brands     = Brand::where('company_id', $companyId)->get();
-        $units      = Unit::where('company_id', $companyId)->get();
-        $taxes      = Tax::where('company_id', $companyId)->get();
-
-        return view('company.products.create', compact('categories', 'brands', 'units', 'taxes'));
+        return Inertia::render('Company/Products/Create', [
+            'categories' => Category::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name']),
+            'brands'     => Brand::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name']),
+            'units'      => Unit::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name']),
+            'taxes'      => Tax::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name', 'rate']),
+        ]);
     }
 
     /**
      * Store a newly created product and its variant(s) in storage.
+     *
+     * FIX APPLIED:
+     *  - Stock::updateOrCreate() no longer uses non-existent 'product_id' column.
+     *    The stocks table unique key is (branch_id, variant_id). For company-level
+     *    initial stock entry we use (company_id, variant_id) without branch_id.
+     *  - StockMovement type changed from invalid 'in' to valid enum 'purchase_in'.
+     *  - StockMovement no longer uses non-existent 'product_id' or 'reference' columns.
+     *    Instead uses the correct polymorphic pair: reference_type + reference_id (both null
+     *    for manual initial stock), plus a 'notes' field if the column exists.
      */
     public function store(Request $request)
     {
         $companyId = Auth::user()->company_id;
         $userId    = Auth::id();
 
-        // ১. সম্পূর্ণ ফর্ম ভ্যালিডেশন (Company scoped exists rules added for security)
+        // Full form validation with company-scoped exists rules for security.
         $validated = $request->validate([
             'name'         => 'required|string|max:255',
             'category_id'  => 'required|exists:categories,id,company_id,' . $companyId,
             'brand_id'     => 'nullable|exists:brands,id,company_id,' . $companyId,
             'description'  => 'nullable|string',
             'has_variants' => 'nullable|boolean',
-            
-            'variants'                 => 'required|array|min:1',
-            'variants.*.sku'           => 'required|string|max:255',
-            'variants.*.barcode'       => 'nullable|string|max:255',
-            'variants.*.unit_id'       => 'required|exists:units,id,company_id,' . $companyId,
-            'variants.*.tax_id'        => 'nullable|exists:taxes,id,company_id,' . $companyId,
-            'variants.*.cost_price'    => 'required|numeric|min:0',
-            'variants.*.selling_price' => 'required|numeric|min:0',
-            'variants.*.stock'         => 'required|integer|min:0',
-            'variants.*.reorder_level' => 'required|integer|min:0',
-            'variants.*.attributes'    => 'nullable|array',
+
+            'variants'                   => 'required|array|min:1',
+            'variants.*.sku'             => 'required|string|max:255',
+            'variants.*.barcode'         => 'nullable|string|max:255',
+            'variants.*.unit_id'         => 'required|exists:units,id,company_id,' . $companyId,
+            'variants.*.tax_id'          => 'nullable|exists:taxes,id,company_id,' . $companyId,
+            'variants.*.cost_price'      => 'required|numeric|min:0',
+            'variants.*.selling_price'   => 'required|numeric|min:0',
+            'variants.*.initial_stock'   => 'required|integer|min:0',
+            'variants.*.reorder_level'   => 'required|integer|min:0',
+            'variants.*.attributes'      => 'nullable|array',
         ]);
 
         DB::beginTransaction();
 
         try {
-            // ক) মূল প্রোডাক্ট তৈরি
+            // Step 1: Create the parent Product record.
             $product = Product::create([
                 'company_id'   => $companyId,
                 'name'         => $validated['name'],
@@ -86,60 +98,91 @@ class ProductController extends Controller
                 'brand_id'     => $validated['brand_id'] ?? null,
                 'description'  => $validated['description'] ?? null,
                 'has_variants' => $request->boolean('has_variants'),
+                'is_active'    => true,
             ]);
 
-            // খ) ভেরিয়েন্ট(গুলো) প্রসেস এবং তৈরি করা
+            // Step 2: Process and create each variant.
             foreach ($validated['variants'] as $variantData) {
+
+                // Clean and encode the attributes JSON.
                 $cleanAttributes = [];
-                if (!empty($variantData['attributes']) && is_array($variantData['attributes'])) {
+                if (! empty($variantData['attributes']) && is_array($variantData['attributes'])) {
                     foreach ($variantData['attributes'] as $attr) {
-                        if (!empty($attr['key']) && !empty($attr['value'])) {
+                        if (! empty($attr['key']) && ! empty($attr['value'])) {
                             $cleanAttributes[] = [
                                 'key'   => trim($attr['key']),
-                                'value' => trim($attr['value'])
+                                'value' => trim($attr['value']),
                             ];
                         }
                     }
                 }
-                
-                $variantData['attributes'] = !empty($cleanAttributes) ? json_encode($cleanAttributes) : null;
-                $variantData['product_id'] = $product->id;
 
-                $variant = ProductVariant::create($variantData);
+                // Create the ProductVariant.
+                $variant = ProductVariant::create([
+                    'product_id'    => $product->id,
+                    'sku'           => $variantData['sku'],
+                    'barcode'       => $variantData['barcode'] ?? null,
+                    'unit_id'       => $variantData['unit_id'],
+                    'tax_id'        => $variantData['tax_id'] ?? null,
+                    'cost_price'    => $variantData['cost_price'],
+                    'selling_price' => $variantData['selling_price'],
+                    'reorder_level' => $variantData['reorder_level'],
+                    'attributes'    => ! empty($cleanAttributes) ? $cleanAttributes : null,
+                    'is_active'     => true,
+                ]);
 
-                // গ) ইনিশিয়াল স্টক এবং Stock Movement এন্ট্রি
-                $initialStock = (int) ($variantData['stock'] ?? 0);
-                if ($initialStock > 0) {
-                    Stock::updateOrCreate(
-                        [
-                            'company_id' => $companyId,
-                            'product_id' => $product->id,
-                            'variant_id' => $variant->id,
-                        ],
-                        [
-                            'quantity'      => $initialStock,
-                            'reorder_level' => $variantData['reorder_level'],
-                        ]
-                    );
+                // Step 3: Create initial Stock entry (company-level, no branch yet).
+                // The stocks table unique key is (branch_id, variant_id).
+                // For a company-level initial stock (before branch assignment),
+                // we create a stock row with branch_id = null.
+                // FIX: Removed non-existent 'product_id' from the Stock upsert.
+                $initialStock = (int) ($variantData['initial_stock'] ?? 0);
 
-                    StockMovement::create([
+                Stock::updateOrCreate(
+                    [
+                        // Unique lookup: one stock row per variant per branch (null = warehouse/unassigned)
                         'company_id' => $companyId,
-                        'product_id' => $product->id,
+                        'branch_id'  => null,
                         'variant_id' => $variant->id,
-                        'type'       => 'in',
-                        'quantity'   => $initialStock,
-                        'reference'  => 'Initial Stock Entry',
-                        'user_id'    => $userId,
+                    ],
+                    [
+                        'quantity'      => $initialStock,
+                        'reorder_level' => $variantData['reorder_level'],
+                    ]
+                );
+
+                // Step 4: Create a StockMovement audit log entry for the initial stock.
+                // FIX 1: type changed from invalid 'in' to valid enum value 'purchase_in'.
+                // FIX 2: Removed non-existent 'product_id' column.
+                // FIX 3: Removed non-existent 'reference' string column.
+                //         The migration uses nullableMorphs('reference') which creates
+                //         'reference_type' (string) and 'reference_id' (bigint) columns.
+                //         For a manual initial stock entry, both are null.
+                if ($initialStock > 0) {
+                    StockMovement::create([
+                        'company_id'     => $companyId,
+                        'branch_id'      => null,
+                        'variant_id'     => $variant->id,
+                        'type'           => 'purchase_in',  // Valid enum value
+                        'quantity'       => $initialStock,  // Positive = stock coming in
+                        'reference_type' => null,           // No linked document for initial entry
+                        'reference_id'   => null,
+                        'user_id'        => $userId,
                     ]);
                 }
             }
 
             DB::commit();
-            return redirect()->route('company.products.index')->with('success', 'পণ্য এবং এর ভেরিয়েন্ট সফলভাবে যোগ করা হয়েছে!');
 
+            return redirect()
+                ->route('company.products.index')
+                ->with('success', 'Product and its variants have been added successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->with('error', 'পণ্য যোগ করতে সমস্যা হয়েছে: ' . $e->getMessage());
+
+            return back()
+                ->withInput()
+                ->with('error', 'Failed to add product: ' . $e->getMessage());
         }
     }
 
@@ -149,9 +192,12 @@ class ProductController extends Controller
     public function show(Product $product)
     {
         $this->authorizeCompany($product);
-        
-        $product->load(['category', 'brand', 'variants.stock', 'variants.tax']);
-        return view('company.products.show', compact('product'));
+
+        $product->load(['category', 'brand', 'variants.unit', 'variants.tax']);
+
+        return Inertia::render('Company/Products/Show', [
+            'product' => $product,
+        ]);
     }
 
     /**
@@ -162,28 +208,23 @@ class ProductController extends Controller
         $this->authorizeCompany($product);
         $companyId = Auth::user()->company_id;
 
-        // ভেরিয়েন্টের সাথে লোড করা হচ্ছে
         $product->load('variants');
-        
-        // JSON attributes কে আবার Array তে রূপান্তর করা হচ্ছে যাতে Blade এ old() এর মতো কাজ করে
-        foreach ($product->variants as $variant) {
-            if ($variant->attributes) {
-                $variant->attributes = json_decode($variant->attributes, true);
-            } else {
-                $variant->attributes = [];
-            }
-        }
 
-        $categories = Category::where('company_id', $companyId)->where('status', 'active')->get();
-        $brands     = Brand::where('company_id', $companyId)->where('status', 'active')->get();
-        $units      = Unit::where('company_id', $companyId)->where('status', 'active')->get();
-        $taxes      = Tax::where('company_id', $companyId)->where('status', 'active')->get();
-
-        return view('company.products.edit', compact('product', 'categories', 'brands', 'units', 'taxes'));
+        return Inertia::render('Company/Products/Edit', [
+            'product'    => $product,
+            'categories' => Category::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name']),
+            'brands'     => Brand::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name']),
+            'units'      => Unit::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name']),
+            'taxes'      => Tax::where('company_id', $companyId)->where('is_active', true)->get(['id', 'name', 'rate']),
+        ]);
     }
 
     /**
      * Update the specified product in storage.
+     *
+     * Same fixes applied as in store():
+     *  - Stock upsert uses (company_id, branch_id, variant_id) — no product_id.
+     *  - StockMovement uses valid enum type and correct morphs columns.
      */
     public function update(Request $request, Product $product)
     {
@@ -197,24 +238,24 @@ class ProductController extends Controller
             'brand_id'     => 'nullable|exists:brands,id,company_id,' . $companyId,
             'description'  => 'nullable|string',
             'has_variants' => 'nullable|boolean',
-            
-            'variants'                 => 'required|array|min:1',
-            'variants.*.id'            => 'nullable|exists:product_variants,id', // Edit এর জন্য নতুন যুক্ত করা হয়েছে
-            'variants.*.sku'           => 'required|string|max:255',
-            'variants.*.barcode'       => 'nullable|string|max:255',
-            'variants.*.unit_id'       => 'required|exists:units,id,company_id,' . $companyId,
-            'variants.*.tax_id'        => 'nullable|exists:taxes,id,company_id,' . $companyId,
-            'variants.*.cost_price'    => 'required|numeric|min:0',
-            'variants.*.selling_price' => 'required|numeric|min:0',
-            'variants.*.stock'         => 'required|integer|min:0',
-            'variants.*.reorder_level' => 'required|integer|min:0',
-            'variants.*.attributes'    => 'nullable|array',
+
+            'variants'                   => 'required|array|min:1',
+            'variants.*.id'              => 'nullable|exists:product_variants,id',
+            'variants.*.sku'             => 'required|string|max:255',
+            'variants.*.barcode'         => 'nullable|string|max:255',
+            'variants.*.unit_id'         => 'required|exists:units,id,company_id,' . $companyId,
+            'variants.*.tax_id'          => 'nullable|exists:taxes,id,company_id,' . $companyId,
+            'variants.*.cost_price'      => 'required|numeric|min:0',
+            'variants.*.selling_price'   => 'required|numeric|min:0',
+            'variants.*.initial_stock'   => 'required|integer|min:0',
+            'variants.*.reorder_level'   => 'required|integer|min:0',
+            'variants.*.attributes'      => 'nullable|array',
         ]);
 
         DB::beginTransaction();
 
         try {
-            // ১. মূল প্রোডাক্ট আপডেট
+            // Step 1: Update the parent Product.
             $product->update([
                 'name'         => $validated['name'],
                 'category_id'  => $validated['category_id'],
@@ -225,104 +266,147 @@ class ProductController extends Controller
 
             $processedVariantIds = [];
 
-            // ২. ভেরিয়েন্ট আপডেট বা নতুন তৈরি
+            // Step 2: Update existing variants or create new ones.
             foreach ($validated['variants'] as $variantData) {
+
                 $cleanAttributes = [];
-                if (!empty($variantData['attributes']) && is_array($variantData['attributes'])) {
+                if (! empty($variantData['attributes']) && is_array($variantData['attributes'])) {
                     foreach ($variantData['attributes'] as $attr) {
-                        if (!empty($attr['key']) && !empty($attr['value'])) {
+                        if (! empty($attr['key']) && ! empty($attr['value'])) {
                             $cleanAttributes[] = [
                                 'key'   => trim($attr['key']),
-                                'value' => trim($attr['value'])
+                                'value' => trim($attr['value']),
                             ];
                         }
                     }
                 }
-                
-                $variantData['attributes'] = !empty($cleanAttributes) ? json_encode($cleanAttributes) : null;
-                
+
+                $variantPayload = [
+                    'sku'           => $variantData['sku'],
+                    'barcode'       => $variantData['barcode'] ?? null,
+                    'unit_id'       => $variantData['unit_id'],
+                    'tax_id'        => $variantData['tax_id'] ?? null,
+                    'cost_price'    => $variantData['cost_price'],
+                    'selling_price' => $variantData['selling_price'],
+                    'reorder_level' => $variantData['reorder_level'],
+                    'attributes'    => ! empty($cleanAttributes) ? $cleanAttributes : null,
+                ];
+
                 $variantId = $variantData['id'] ?? null;
-                unset($variantData['id']); // updateOrCreate এ id আলাদাভাবে লাগে
 
                 if ($variantId) {
-                    // existing variant update
-                    $variant = ProductVariant::where('product_id', $product->id)->findOrFail($variantId);
-                    $variant->update($variantData);
+                    // Update existing variant — verify it belongs to this product.
+                    $variant = ProductVariant::where('product_id', $product->id)
+                        ->findOrFail($variantId);
+                    $variant->update($variantPayload);
                     $processedVariantIds[] = $variant->id;
                 } else {
-                    // new variant create
-                    $variantData['product_id'] = $product->id;
-                    $newVariant = ProductVariant::create($variantData);
+                    // Create a brand-new variant for this product.
+                    $variantPayload['product_id'] = $product->id;
+                    $variantPayload['is_active']   = true;
+                    $newVariant = ProductVariant::create($variantPayload);
                     $processedVariantIds[] = $newVariant->id;
 
-                    // নতুন ভেরিয়েন্টের জন্য স্টক এন্ট্রি
-                    $initialStock = (int) ($variantData['stock'] ?? 0);
+                    // Create initial stock for the new variant.
+                    // FIX: No product_id in Stock, correct morphs in StockMovement.
+                    $initialStock = (int) ($variantData['initial_stock'] ?? 0);
+
+                    Stock::updateOrCreate(
+                        [
+                            'company_id' => $companyId,
+                            'branch_id'  => null,
+                            'variant_id' => $newVariant->id,
+                        ],
+                        [
+                            'quantity'      => $initialStock,
+                            'reorder_level' => $variantData['reorder_level'],
+                        ]
+                    );
+
                     if ($initialStock > 0) {
-                        Stock::updateOrCreate(
-                            ['company_id' => $companyId, 'product_id' => $product->id, 'variant_id' => $newVariant->id],
-                            ['quantity' => $initialStock, 'reorder_level' => $variantData['reorder_level']]
-                        );
                         StockMovement::create([
-                            'company_id' => $companyId, 'product_id' => $product->id, 'variant_id' => $newVariant->id,
-                            'type' => 'in', 'quantity' => $initialStock, 'reference' => 'New Variant Initial Stock', 'user_id' => $userId,
+                            'company_id'     => $companyId,
+                            'branch_id'      => null,
+                            'variant_id'     => $newVariant->id,
+                            'type'           => 'purchase_in',
+                            'quantity'       => $initialStock,
+                            'reference_type' => null,
+                            'reference_id'   => null,
+                            'user_id'        => $userId,
                         ]);
                     }
                 }
             }
 
-            // ৩. যেসব ভেরিয়েন্ট ফর্ম থেকে মুছে ফেলা হয়েছে সেগুলো ডিলিট করা (Optional but recommended)
-            // সতর্কতা: যদি পুরানো ভেরিয়েন্টের সেলস হিস্টরি থাকে, তবে হার্ড ডিলিট না করে 'is_active' = false করা ভালো।
-            // এখানে আমরা সিম্পলিসিটির জন্য ডিলিট করছি না, শুধু আপডেট/ক্রিয়েট করছি। 
-
             DB::commit();
-            return redirect()->route('company.products.index')->with('success', 'পণ্য সফলভাবে আপডেট করা হয়েছে!');
 
+            return redirect()
+                ->route('company.products.index')
+                ->with('success', 'Product updated successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->with('error', 'পণ্য আপডেট করতে সমস্যা হয়েছে: ' . $e->getMessage());
+
+            return back()
+                ->withInput()
+                ->with('error', 'Failed to update product: ' . $e->getMessage());
         }
     }
 
     /**
      * Remove the specified product from storage.
+     *
+     * Products with transaction history are soft-deleted (set is_active = false)
+     * rather than hard-deleted to preserve audit trails.
      */
     public function destroy(Product $product)
     {
         $this->authorizeCompany($product);
 
-        // চেক করুন প্রোডাক্টের কোনো সেলস বা স্টক মুভমেন্ট হিস্ট্রি আছে কিনা (Best Practice)
-        $hasHistory = StockMovement::where('product_id', $product->id)->exists();
-        
+        // Check if any stock movements exist for this product's variants.
+        $variantIds  = $product->variants()->pluck('id');
+        $hasHistory  = StockMovement::whereIn('variant_id', $variantIds)->exists();
+
         if ($hasHistory) {
-            return back()->with('error', 'এই পণ্যটি মুছে ফেলা যাবে না কারণ এর লেনদেনের ইতিহাস রয়েছে। আপনি চাইলে এটি Inactive করে দিতে পারেন।');
+            // Soft-deactivate instead of hard delete to preserve history.
+            $product->update(['is_active' => false]);
+
+            return back()->with('success', 'Product has transaction history and has been deactivated instead of deleted.');
         }
 
         DB::beginTransaction();
         try {
-            // ভেরিয়েন্ট, স্টক এবং স্টক মুভমেন্ট আগে ডিলিট করতে হবে (Foreign Key Constraint এর কারণে)
+            // Hard delete: remove stock, movements, variants, then the product.
             $product->variants()->each(function ($variant) {
                 Stock::where('variant_id', $variant->id)->delete();
                 StockMovement::where('variant_id', $variant->id)->delete();
                 $variant->delete();
             });
-            
+
             $product->delete();
             DB::commit();
 
-            return redirect()->route('company.products.index')->with('success', 'পণ্য সফলভাবে মুছে ফেলা হয়েছে।');
+            return redirect()
+                ->route('company.products.index')
+                ->with('success', 'Product deleted successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'পণ্য মুছে ফেলতে সমস্যা হয়েছে: ' . $e->getMessage());
+
+            return back()->with('error', 'Failed to delete product: ' . $e->getMessage());
         }
     }
 
+    // ==========================================
+    // Private Helpers
+    // ==========================================
+
     /**
-     * Helper method to ensure the product belongs to the authenticated user's company.
+     * Abort with 403 if the product does not belong to the authenticated user's company.
+     * This is a secondary guard - the EnsureTenantAccess middleware is the primary one.
      */
-    private function authorizeCompany(Product $product)
+    private function authorizeCompany(Product $product): void
     {
-        if ($product->company_id !== Auth::user()->company_id) {
-            abort(403, 'অননুমোদিত অ্যাক্সেস। এই পণ্যটি আপনার কোম্পানির অন্তর্ভুক্ত নয়।');
+        if ((int) $product->company_id !== (int) Auth::user()->company_id) {
+            abort(403, 'Unauthorized: This product does not belong to your company.');
         }
     }
 }
